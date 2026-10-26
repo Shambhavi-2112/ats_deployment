@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  ats-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ats-production-engine:latest
+    container_name: ats-production-engine
+    ports:
+      - "8000:8000" # FastAPI Backend & Swagger Docs
+      - "8501:8501" # Streamlit Interactive Dashboard
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
