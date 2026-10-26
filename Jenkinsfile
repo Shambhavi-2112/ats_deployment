@@ -93,13 +93,13 @@ print('Artifact verification passed: all models unpickled successfully.')
                     docker rm -f ${CONTAINER_NAME} || true
 
                     # Start test container
-                    docker run -d --name ${CONTAINER_NAME} -p 8080:8000 -p 8585:8501 ${APP_NAME}:${IMAGE_TAG}
+                    docker run -d --name ${CONTAINER_NAME} -p 8001:8000 -p 8585:8501 ${APP_NAME}:${IMAGE_TAG}
 
                     # Poll /health with 15 retries (waiting for uvicorn warmup)
                     echo "Waiting for service to become healthy..."
                     ATTEMPTS=0
                     UNTIL=15
-                    until curl -sf http://localhost:8080/health > /dev/null || [ $ATTEMPTS -eq $UNTIL ]; do
+                    until curl -sf http://localhost:8001/health > /dev/null || [ $ATTEMPTS -eq $UNTIL ]; do
                         echo "Waiting for API... ($ATTEMPTS/$UNTIL)"
                         sleep 2
                         ATTEMPTS=$((ATTEMPTS+1))
@@ -113,11 +113,11 @@ print('Artifact verification passed: all models unpickled successfully.')
                     fi
 
                     echo "Healthcheck PASSED! Running live inference smoke test..."
-                    curl -s -f -X POST "http://localhost:8080/forecast/pm25" \
+                    curl -s -f -X POST "http://localhost:8001/forecast/pm25" \
                          -H "Content-Type: application/json" \
                          -d '{"horizon_days": 5, "scenario": "autonomous_var"}' | grep "forecast_records"
 
-                    curl -s -f -X POST "http://localhost:8080/forecast/volatility" \
+                    curl -s -f -X POST "http://localhost:8001/forecast/volatility" \
                          -H "Content-Type: application/json" \
                          -d '{"horizon_days": 5}' | grep "forecast_records"
 
