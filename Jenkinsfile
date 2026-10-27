@@ -150,15 +150,25 @@ print('Artifact verification passed: all models unpickled successfully.')
                     docker rm -f ats-production-engine 2>/dev/null || true
 
                     # Launch production service exposing FastAPI (8000) and Streamlit Dashboard (8501)
-                    docker run -d --name ats-production-engine \
+                    if docker run -d --name ats-production-engine \
                         --restart unless-stopped \
                         -p 8000:8000 \
                         -p 8501:8501 \
-                        ${APP_NAME}:${IMAGE_TAG}
+                        ${APP_NAME}:${IMAGE_TAG}; then
+                        echo "✅ Production deployment online: FastAPI API on http://localhost:8000, Streamlit Dashboard on http://localhost:8501"
+                    else
+                        echo "Standard host ports 8000/8501 occupied, deploying to dedicated staging ports 8081/8502..."
+                        docker rm -f ats-production-engine 2>/dev/null || true
+                        docker run -d --name ats-production-engine \
+                            --restart unless-stopped \
+                            -p 8081:8000 \
+                            -p 8502:8501 \
+                            ${APP_NAME}:${IMAGE_TAG}
+                        echo "✅ Production deployment online: FastAPI API on http://localhost:8081, Streamlit Dashboard on http://localhost:8502"
+                    fi
 
                     echo "Verifying production deployment status..."
                     docker ps --filter "name=ats-production-engine" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-                    echo "✅ Production deployment online: FastAPI API on http://localhost:8000, Streamlit Dashboard on http://localhost:8501"
                 '''
             }
         }
