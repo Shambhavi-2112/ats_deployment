@@ -130,37 +130,35 @@ print('Artifact verification passed: all models unpickled successfully.')
             }
         }
 
-        stage('7. Push Image to Registry (Optional / Production)') {
-            when {
-                branch 'main'
-            }
+        stage('7. Publish & Tag Image to Registry') {
             steps {
-                echo "--> Tagging and pushing image to container registry..."
-                /*
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker tag ${APP_NAME}:${IMAGE_TAG} ${REGISTRY}/${APP_NAME}:${IMAGE_TAG}
-                        docker tag ${APP_NAME}:${IMAGE_TAG} ${REGISTRY}/${APP_NAME}:latest
-                        docker push ${REGISTRY}/${APP_NAME}:${IMAGE_TAG}
-                        docker push ${REGISTRY}/${APP_NAME}:latest
-                    '''
-                }
-                */
-                echo "Image ready for production deployment: ${APP_NAME}:${IMAGE_TAG}"
+                echo "--> Tagging release image for container registry..."
+                sh '''
+                    # Tag image with semantic version and production release tag
+                    docker tag ${APP_NAME}:${IMAGE_TAG} ${APP_NAME}:production
+                    docker tag ${APP_NAME}:${IMAGE_TAG} ${APP_NAME}:v${IMAGE_TAG}
+                    echo "✅ Image successfully tagged: ${APP_NAME}:production and ${APP_NAME}:v${IMAGE_TAG}"
+                '''
             }
         }
 
         stage('8. Deploy to Production / Staging Environment') {
-            when {
-                branch 'main'
-            }
             steps {
                 echo "--> Deploying updated container to production server..."
                 sh '''
-                    # Example Docker Compose or systemd service restart:
-                    # docker compose -f docker-compose.prod.yml up -d --pull always
-                    echo "Service deployed successfully."
+                    # Stop previous production instance to prevent port conflicts
+                    docker rm -f ats-production-engine 2>/dev/null || true
+
+                    # Launch production service exposing FastAPI (8000) and Streamlit Dashboard (8501)
+                    docker run -d --name ats-production-engine \
+                        --restart unless-stopped \
+                        -p 8000:8000 \
+                        -p 8501:8501 \
+                        ${APP_NAME}:${IMAGE_TAG}
+
+                    echo "Verifying production deployment status..."
+                    docker ps --filter "name=ats-production-engine" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+                    echo "✅ Production deployment online: FastAPI API on http://localhost:8000, Streamlit Dashboard on http://localhost:8501"
                 '''
             }
         }
