@@ -89,30 +89,34 @@ print('Artifact verification passed: all models unpickled successfully.')
             steps {
                 echo "--> Launching ephemeral container for live healthcheck and smoke tests..."
                 sh '''
+                    # Ensure container is cleaned up even if step fails or terminates
+                    trap 'docker rm -f ${CONTAINER_NAME} 2>/dev/null || true' EXIT
+
                     # Stop any previous leftover test container
-                    docker rm -f ${CONTAINER_NAME} || true
+                    docker rm -f ${CONTAINER_NAME} 2>/dev/null || true
 
-                    # Start test container
-                    docker run -d --name ${CONTAINER_NAME} -p 8001:8000 -p 8585:8501 ${APP_NAME}:${IMAGE_TAG}
+                    # Start test container without port bindings (tests run internally via docker exec)
+                    docker run -d --name ${CONTAINER_NAME} ${APP_NAME}:${IMAGE_TAG}
 
-                    # Poll /health directly via docker exec (works regardless of whether Jenkins is inside Docker or on host)
                     echo "Waiting for service to become healthy inside ephemeral container..."
-                    ATTEMPTS=0
-                    UNTIL=15
-                    until docker exec ${CONTAINER_NAME} curl -sf http://127.0.0.1:8000/health > /dev/null || [ $ATTEMPTS -eq $UNTIL ]; do
-                        echo "Waiting for API startup... ($ATTEMPTS/$UNTIL)"
+                    SUCCESS=0
+                    for i in $(seq 1 20); do
+                        if docker exec ${CONTAINER_NAME} curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+                            echo "API is healthy after ${i} check(s)!"
+                            SUCCESS=1
+                            break
+                        fi
+                        echo "Waiting for API startup... (${i}/20)"
                         sleep 2
-                        ATTEMPTS=$((ATTEMPTS+1))
                     done
 
-                    if [ $ATTEMPTS -eq $UNTIL ]; then
-                        echo "Healthcheck FAILED! Printing container logs:"
+                    if [ "$SUCCESS" -ne 1 ]; then
+                        echo "Healthcheck FAILED! Container stdout/stderr:"
                         docker logs ${CONTAINER_NAME}
-                        docker rm -f ${CONTAINER_NAME}
                         exit 1
                     fi
 
-                    echo "Healthcheck PASSED! Running live inference smoke test..."
+                    echo "Healthcheck PASSED! Running live inference smoke tests..."
                     docker exec ${CONTAINER_NAME} curl -s -f -X POST "http://127.0.0.1:8000/forecast/pm25" \
                          -H "Content-Type: application/json" \
                          -d '{"horizon_days": 5, "scenario": "autonomous_var"}' | grep "forecast_records"
@@ -121,8 +125,7 @@ print('Artifact verification passed: all models unpickled successfully.')
                          -H "Content-Type: application/json" \
                          -d '{"horizon_days": 5}' | grep "forecast_records"
 
-                    echo "Live smoke test succeeded! Cleaning up ephemeral container..."
-                    docker rm -f ${CONTAINER_NAME}
+                    echo "Live smoke test succeeded! Ephemeral container will be cleaned up."
                 '''
             }
         }
